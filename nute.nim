@@ -1,8 +1,10 @@
 import os, strutils, sequtils, math
 
-# *************
-# * T Y P E S *
-# *************
+###################
+#                 #
+#    T Y P E S    #
+#                 #
+###################
 
 #[  AVL tree adapted from Julienne Walker's presentation at
     http://eternallyconfuzzled.com/tuts/datastructures/jsw_tut_avl.aspx.
@@ -22,14 +24,23 @@ type
         balance : range[-2..2]           # Balance factor (bounded).
         links   : array[Direction, Line] # Children.
 
-
-#---------------------------------------------------------------------------------------------------
+    # This type constitutes a text file in memory.
+    Document = ref object
+        name          : string
+        path          : string
+        extension     : string
+        modified      : bool
+        body          : Line
+        lowest_index  : int
+        highest_index : int
 
 func opp(dir: Direction): Direction {.inline.} =
     ## Return the opposite of a direction.
     Direction(1 - ord(dir))
 
-#---------------------------------------------------------------------------------------------------
+##############
+#    Line    #
+##############
 
 func single(root: Line; dir: Direction): Line =
     ## Single rotation.
@@ -38,7 +49,6 @@ func single(root: Line; dir: Direction): Line =
     root.links[opp(dir)] = result.links[dir]
     result.links[dir] = root
 
-#---------------------------------------------------------------------------------------------------
 
 func double(root: Line; dir: Direction): Line =
     ## Double rotation.
@@ -53,7 +63,6 @@ func double(root: Line; dir: Direction): Line =
     root.links[opp(dir)] = result.links[dir]
     result.links[dir] = root
 
-#---------------------------------------------------------------------------------------------------
 
 func adjustBalance(root: Line; dir: Direction; balance: int) =
     ## Adjust balance factors after double rotation.
@@ -75,7 +84,6 @@ func adjustBalance(root: Line; dir: Direction; balance: int) =
 
     node2.balance = 0
 
-#---------------------------------------------------------------------------------------------------
 
 func insertBalance(root: Line; dir: Direction): Line =
     ## Rebalancing after an insertion.
@@ -92,7 +100,6 @@ func insertBalance(root: Line; dir: Direction): Line =
         root.adjustBalance(dir, balance)
         result = root.double(opp(dir))
 
-#---------------------------------------------------------------------------------------------------
 
 func insertR(root: Line; new_line: Line): tuple[node: Line, done: bool] =
     ## Insert data (recursive way).
@@ -116,7 +123,6 @@ func insertR(root: Line; new_line: Line): tuple[node: Line, done: bool] =
         of -1, 1: (root, false)
         else: (root.insertBalance(dir), true)
 
-#---------------------------------------------------------------------------------------------------
 
 func removeBalance(root: Line; dir: Direction): tuple[node: Line, done: bool] =
     ## Rebalancing after a deletion.
@@ -135,7 +141,6 @@ func removeBalance(root: Line; dir: Direction): tuple[node: Line, done: bool] =
         node.balance = balance
         result = (root.single(dir), true)
 
-#---------------------------------------------------------------------------------------------------
 
 func removeR(root: Line; index: int): tuple[node: Line, done: bool] =
     ## Remove data (recursive way).
@@ -167,12 +172,10 @@ func removeR(root: Line; index: int): tuple[node: Line, done: bool] =
             of 0: (root, false)
             else: root.removeBalance(dir)
 
-#---------------------------------------------------------------------------------------------------
 
 method print(self: Line) {.base.} =
     echo self.index, "\t| ", self.text
 
-#---------------------------------------------------------------------------------------------------
 
 method list(self: Line, lower_bound: int, upper_bound: int) {.base.} =
     # Return traps
@@ -188,7 +191,14 @@ method list(self: Line, lower_bound: int, upper_bound: int) {.base.} =
     if self.index < upper_bound:
         self.links[Right].list(lower_bound, upper_bound)
 
-#---------------------------------------------------------------------------------------------------
+proc read(self: Line, index: int): string =
+    if self == nil: return
+    if self.index == index:
+      return self.text
+    if index < self.index:
+      return self.links[Left].read(index)
+    if self.index < index:
+      return self.links[Right].read(index)
 
 method align(self: Line, increment: int, index: int): int {.base.} =
     if self == nil: return index
@@ -199,7 +209,6 @@ method align(self: Line, increment: int, index: int): int {.base.} =
     idx = self.links[Right].align(increment, idx)
     return idx
 
-#---------------------------------------------------------------------------------------------------
 
 method len(self: Line, length: int): int {.base.} =
     if self == nil: return 0
@@ -211,7 +220,6 @@ method len(self: Line, length: int): int {.base.} =
         len = self.links[Right].len(len)
     return len
 
-#---------------------------------------------------------------------------------------------------
 
 method save(self: Line, file: var string, max: int): string {.base.} =
     if self == nil: return file
@@ -225,18 +233,11 @@ method save(self: Line, file: var string, max: int): string {.base.} =
     return edited_file
 
 #---------------------------------------------------------------------------------------------------
+##############
+#  Document  #
+##############
 
-# Document -- This type constitutes a text file in memory.
-type Document = ref object
-        name          : string
-        path          : string
-        extension     : string
-        modified      : bool
-        body          : Line
-        lowest_index  : int
-        highest_index : int
-
-method insert(self: Document, new_line: var Line) {.base.} =
+proc insert(self: Document, new_line: var Line) =
     if self.body == nil:
         self.lowest_index  = new_line.index
         self.highest_index = new_line.index
@@ -249,38 +250,46 @@ method insert(self: Document, new_line: var Line) {.base.} =
     self.body      = self.body.insertR(new_line).node
     self.modified  = true
 
-#---------------------------------------------------------------------------------------------------
 
-method align(self: Document, increment: int, index: int) {.base.} =
+proc remove(self: Document, removed_line: int) =
+    if self.body == nil: 
+        echo "DELETE Error: Document already empty."
+        return
+    if removed_line < self.lowest_index and self.highest_index < removed_line:
+        echo "DELETE Error: Selected line out of document bounds."
+        return
+    discard self.body.removeR(removed_line).node
+    self.modified = true
+
+
+proc align(self: Document, increment: int, index: int) =
     self.lowest_index  = increment * index
     self.highest_index = increment * self.body.align(increment, index)
 
-#---------------------------------------------------------------------------------------------------
 
-method len(self: Document): int {.base.} =
+proc len(self: Document): int =
     if self.body == nil:
         return 0
     return self.body.len(0)
 
-#---------------------------------------------------------------------------------------------------
 
-method save(self: Document): tuple[file_path: string, text_body: string] {.base.} =
+proc save(self: Document): tuple[file_path: string, text_body: string] =
     if self == nil: return
     var file_body : string
     return ( self.path & self.name & self.extension, self.body.save( file_body, self.highest_index) )
 
 #---------------------------------------------------------------------------------------------------
 
-# *****************
-# * G L O B A L S *
-# *****************
+###################
+#  G L O B A L S  #
+###################
 var open_documents   : seq[Document]
 var current_document : int = 0
 
 
-# *****************
-# * H E L P E R S *
-# *****************
+###################
+#  H E L P E R S  #
+###################
 proc is_int(token: string): bool =
     try:
         discard parseInt(token)
@@ -300,9 +309,9 @@ proc tokenize(input: string): seq[string] =
 
 #---------------------------------------------------------------------------------------------------
 
-# *******************
-# * C O M M A N D S *
-# *******************
+#####################
+#  C O M M A N D S  #
+#####################
 
 # List out each line of text in current document
 proc command_list(arguments: string) =
@@ -330,35 +339,33 @@ proc command_list(arguments: string) =
     open_documents[current_document].body.list(start, stop)
     echo " "
 
-#---------------------------------------------------------------------------------------------------
 
 # List UTE commands
 proc command_help() =
     echo "\tCOMMANDS:\n\t---------"
     echo " LIST:     List out each line of text in current text file."
-    echo "    Syntax: LIST < starting index (optional)> < ending index (optional)>"
+    echo "\tSyntax: LIST < starting index (optional)> < ending index (optional)>"
     echo " OPEN:     Open a text file from disk."
-    echo "    Syntax: OPEN < path/to/filename.extension >"
+    echo "\tSyntax: OPEN < path/to/filename.extension >"
     echo " SAVE:     Save current text file to disk."
-    echo "    Syntax: SAVE < path/to/filename.extension (optional)>"
+    echo "\tSyntax: SAVE < path/to/filename.extension (optional)>"
     echo " HELP:     List UTE commands."
-    echo "    Syntax: HELP (Wait, you already know this...)"
+    echo "\tSyntax: HELP (Wait, you already know this...)"
     echo " NEW:      Create a new text text file."
-    echo "    Syntax: NEW < filename(.extension) (optional)>"
+    echo "\tSyntax: NEW < filename(.extension) (optional)>"
     echo " FILE:     Switch to another open text file."
-    echo "    Syntax: FILE < filename(.extension)/index/ < / > (optional)>"
+    echo "\tSyntax: FILE < filename(.extension)/index/ < / > (optional)>"
     echo " COPY:     Copy one line at given number to another."
-    echo "    Syntax: COPY < from line # > < to line # >"
+    echo "\tSyntax: COPY < from line # > < to line # >"
     echo " DELETE:   Delete one line at given number to another."
-    echo "    Syntax: DELETE < line # >"
+    echo "\tSyntax: DELETE < line # >"
     echo " RENUM:    Change line number."
-    echo "    Syntax: RENUM < current line # > < new line # >"
+    echo "\tSyntax: RENUM < current line # > < new line # >"
     echo " ALIGN:  Align all line numbers by a given increment."
-    echo "    Syntax: ALIGN < number (optional, default=10)>"
+    echo "\tSyntax: ALIGN < number (optional, default=10)>"
     echo " QUIT:     Exit the editor."
-    echo "    Syntax: QUIT\n"
+    echo "\tSyntax: QUIT\n"
 
-#---------------------------------------------------------------------------------------------------
 
 # Align all line numbers to a given increment
 proc command_align(arguments: string) =
@@ -369,13 +376,12 @@ proc command_align(arguments: string) =
             increment = parseInt(tokens[0])
         else:
             echo "\tALIGN Error: Improper Syntax!"
-            echo "\tCorrect syntax: ALIGN < number (optional, default=10)>"
+            echo "\tCorrect Syntax: ALIGN < number (optional, default=10)>"
             echo "\tArgument, ", tokens[0], ", is not an integer.\n\tPlease, try again."
             return
     open_documents[current_document].align(increment, 1)
     echo " "
 
-#---------------------------------------------------------------------------------------------------
 
 proc command_open(arguments: string) =
     let tokens : seq[string] = arguments.tokenize()
@@ -412,7 +418,6 @@ proc command_open(arguments: string) =
     echo "> Opened, and now currently editing: ", new_document.name, new_document.extension, " in ", new_document.path, ".\n"#\tHere are the first 5 lines:"
     #command_list("0 5")
 
-#---------------------------------------------------------------------------------------------------
 
 proc command_save(arguments: string) =
     if open_documents[current_document].modified == false:
@@ -446,15 +451,74 @@ proc command_save(arguments: string) =
 
     echo "> File ", open_documents[current_document].name & open_documents[current_document].extension, " saved successfully to directory ", open_documents[current_document].path, "!\n"
 
-#---------------------------------------------------------------------------------------------------
 
 proc command_new(arguments: string) =
-    echo "\tNEW: todo..."
+    var
+        tokens    : seq[string] = arguments.tokenize()
+        file_path : tuple[dir: string, name: string, ext: string]
+        new_document : Document = Document()
+    new_document.modified = true
+    open_documents.add(new_document)
+    if len(tokens) > 0:
+        file_path = splitFile(tokens[0])
+        open_documents[current_document].name      = file_path.name
+        open_documents[current_document].path      = file_path.dir
+        open_documents[current_document].extension = file_path.ext
+    current_document = open_documents.high
+
+
+proc command_file(arguments: string) =
+    let tokens : seq[string] = arguments.tokenize()
+    if is_int(tokens[0]) and parseInt(tokens[0]) in 0..open_documents.high:
+        current_document = parseInt(tokens[0])
+    elif tokens[0] == "<":
+        current_document = open_documents.high mod current_document - 1
+    elif tokens[0] == ">":
+        current_document = open_documents.high mod current_document + 1
+    else:
+        echo "\tFILE Error: Unable to switch open file! Malformed argument."
+        echo "\tCorrect Syntax: FILE < filename(.extension)/index/ < / > (optional)>\n"
+        return
+    echo "> Switched to ", open_documents[current_document].name & open_documents[current_document].extension, ", document #", current_document, "\n"
+
+
+proc command_delete(arguments: string) =
+    let tokens : seq[string] = arguments.tokenize()
+    if is_int(tokens[0]) == false:
+        echo "\tDELETE Error: Unable to delete line! Malformed argument."
+        echo "\tCorrect Syntax: DELETE < line # >"
+        return
+    let line_num = parseInt(tokens[0])
+    open_documents[current_document].remove(line_num)
+    echo "> Deleted line number ", line_num, ".\n"
+
+
+proc command_copy(arguments: string) =
+    let tokens : seq[string] = arguments.tokenize()
+    if len(tokens) < 2:
+        echo "\tCOPY Error: Unable to copy! Malformed argument."
+        echo "\tCorrect Syntax: COPY < from line # > < to line # >"
+        return
+    if not is_int(tokens[0]) or not is_int(tokens[1]):
+        echo "\tCOPY Error: Unable to copy! Both arguments must be integers."
+        echo "\tCorrect Syntax: COPY < from line # > < to line # >"
+        return
+    let
+        from_line : int    = parseInt(tokens[0])
+        to_line   : int    = parseInt(tokens[1])
+        from_txt  : string = open_documents[current_document].body.read(from_line)
+    if from_txt == nil:
+        echo "\tCOPY Error: Unable to copy! Copy from line is nonexistent."
+        return
+    var copied_line : Line = Line(index: to_line, text: from_txt)
+    open_documents[current_document].insert(copied_line)
+    echo "> Copied line number ", from_line, " to ", to_line, ".\n"
+
 
 #---------------------------------------------------------------------------------------------------
-# *******************
-# * E V A L U A T E *
-# *******************
+#####################
+#  E V A L U A T E  #
+#####################
 proc evaluate(user_input: var string) =
     let
         tokens : seq[string] = user_input.split(' ')
@@ -473,18 +537,18 @@ proc evaluate(user_input: var string) =
     of 'n': # Create a new text file
         command_new(text)
     of 'f': # Switch to another open file
-        echo "\tFILE: todo..."
+        command_file(text)
     of 'c': # Copy one line number to another
-        echo "\tCOPY: todo..."
+        command_copy(text)
     of 'd': # Delete line at given number
-        echo "\tDELETE: todo..."
+        command_delete(text)
     of 'r': # Renumber a line
         echo "\tRENUM: todo..."
     of 'a': # Align all line numbers in current file to a given increment
         command_align(text)
     of 'q': # Exit the program
         echo "\tQUIT: todo->"
-        echo "\t\t- Ask user to save modified document before exit"
+        echo "\t\t- Ask user to save modified document(s) before exit"
         quit(0)
     #elif is_int(user_input): # delete line
 
@@ -499,19 +563,19 @@ proc evaluate(user_input: var string) =
         echo "\tUnknown command, ", token, ", otherwise, it is not a valid line number.\n"
 
 
-# *******************
-# *                 *
-# *     M A I N     *
-# *                 *
-# *******************
+###################
+#                 #
+#     M A I N     #
+#                 #
+###################
 #write(stdout, "\x1b[2J")
 echo "\t\t*** Nim Unstructured Text Editor ***\n"
 
 
-var new_document : Document = Document()
-open_documents.add(new_document)
+#var new_document : Document = Document()
+#open_documents.add(new_document)
 #open_documents[current_document].length = 0
-
+command_new("")
 
 while true:
     var input : string = readLine(stdin)
