@@ -147,9 +147,8 @@ func removeR(root: Line; index: int): tuple[node: Line, done: bool] =
 
     if root.isNil:
         return (nil, false)
-
-    var
-        index = index
+    
+    var index = index
     if root.index == index:
         if root.links[Left].isNil:
             return (root.links[Right], false)
@@ -158,8 +157,8 @@ func removeR(root: Line; index: int): tuple[node: Line, done: bool] =
         var heir = root.links[Left]
         while not heir.links[Right].isNil:
             heir = heir.links[Right]
-            root.index = heir.index
-            index = heir.index
+        root.index = heir.index
+        index = heir.index
 
     let dir = if root.index < index: Right else: Left
     var done: bool
@@ -258,7 +257,7 @@ proc remove(self: Document, removed_line: int) =
     if removed_line < self.lowest_index and self.highest_index < removed_line:
         echo "DELETE Error: Selected line out of document bounds."
         return
-    discard self.body.removeR(removed_line).node
+    self.body     = self.body.removeR(removed_line).node
     self.modified = true
 
 
@@ -496,7 +495,7 @@ proc command_delete(arguments: string) =
 proc command_copy(arguments: string) =
     let tokens : seq[string] = arguments.tokenize()
     if len(tokens) < 2:
-        echo "\tCOPY Error: Unable to copy! Malformed argument."
+        echo "\tCOPY Error: Too few arguments."
         echo "\tCorrect Syntax: COPY < from line # > < to line # >"
         return
     if not is_int(tokens[0]) or not is_int(tokens[1]):
@@ -513,6 +512,42 @@ proc command_copy(arguments: string) =
     var copied_line : Line = Line(index: to_line, text: from_txt)
     open_documents[current_document].insert(copied_line)
     echo "> Copied line number ", from_line, " to ", to_line, ".\n"
+
+
+proc command_renum(arguments: string) =
+    let tokens : seq[string] = arguments.tokenize()
+    if len(tokens) < 2:
+        echo "\tRENUM Error: Too few arguments given."
+        echo "\tCorrect Syntax: RENUM < from line # > < to line # >"
+        return
+    if not is_int(tokens[0]) or not is_int(tokens[1]):
+        echo "\tRENUM Error: Both arguments must be integers."
+        echo "\tCorrect Syntax: RENUM < from line # > < to line # >"
+        return
+    let
+        from_line : int    = parseInt(tokens[0])
+        to_line   : int    = parseInt(tokens[1])
+        from_txt  : string = open_documents[current_document].body.read(from_line)
+    if from_txt == nil:
+        echo "\tRENUM Error: Renum from line is nonexistent."
+        return
+    var copied_line : Line = Line(index: to_line, text: from_txt)
+    open_documents[current_document].insert(copied_line)
+    open_documents[current_document].remove(from_line)
+
+
+proc command_quit(arguments: string) =
+    let tokens : seq[string] = arguments.tokenize()
+    if 0 < len(tokens):
+        if tokens[0] == '!': quit(0)
+    for document in open_documents:
+        if not document.modified: continue
+        echo "> Document ", document.name, ".", document.extension, " in ", document.path, "is unsaved; would you like to save it? [y/n] "
+        while true:
+            var input : string = readLine(stdin)
+            if   input.toLowerAscii() == "n": break
+            elif input.toLowerAscii() == "y": discard
+            echo "> Please enter either a 'y' or 'n'."
 
 
 #---------------------------------------------------------------------------------------------------
@@ -543,7 +578,7 @@ proc evaluate(user_input: var string) =
     of 'd': # Delete line at given number
         command_delete(text)
     of 'r': # Renumber a line
-        echo "\tRENUM: todo..."
+        command_renum(text)
     of 'a': # Align all line numbers in current file to a given increment
         command_align(text)
     of 'q': # Exit the program
