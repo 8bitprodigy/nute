@@ -8,7 +8,11 @@ Nim Unstructured/Useless Text Editor
 
 Run with `nute` and to enter text, type an integer, followed by a space, then your line of text, just like writing BASIC on an 80's microcomputer.
 
+## Building:
 
+```bash
+nim c nute.nim
+```
 
 ### Commands:
 
@@ -99,3 +103,7 @@ Exit the editor.
 ##### Syntax:
 
     QUIT
+
+## License
+
+This project is dedicated to the public domain where applicable, and 0BSD everywhere else. See `LICENSE` for terms.

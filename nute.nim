@@ -534,6 +534,7 @@ proc command_renum(arguments: string) =
     var copied_line : Line = Line(index: to_line, text: from_txt)
     open_documents[current_document].insert(copied_line)
     open_documents[current_document].remove(from_line)
+    echo "> Renumbered line number ", from_line, " to ", to_line, ".\n"
 
 
 proc command_quit(arguments: string) =
@@ -542,12 +543,15 @@ proc command_quit(arguments: string) =
         if tokens[0] == '!': quit(0)
     for document in open_documents:
         if not document.modified: continue
-        echo "> Document ", document.name, ".", document.extension, " in ", document.path, "is unsaved; would you like to save it? [y/n] "
+        echo "> Document ", document.name, ".", document.extension, " in ", document.path, "is unsaved; would you like to save it? [y/n/(c)ancel] "
         while true:
             var input : string = readLine(stdin)
             if   input.toLowerAscii() == "n": break
+            elif input.toLowerAscii() == "c": return
             elif input.toLowerAscii() == "y": discard
             echo "> Please enter either a 'y' or 'n'."
+    quit(0)
+        
 
 
 #---------------------------------------------------------------------------------------------------
