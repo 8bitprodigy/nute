@@ -458,10 +458,11 @@ proc command_open(arguments: string) =
         var new_line : Line = Line( index: (index+1) * increment, text: line )
         new_document.insert( new_line )
 
+    new_document.modified = false
     open_documents.add(new_document)
     current_document = len(open_documents)-1
+
     echo "> Opened, and now currently editing: ", new_document.name, new_document.extension, " in ", new_document.path, ".\n"#\tHere are the first 5 lines:"
-    #command_list("0 5")
 
 
 proc command_save(arguments: string) =
@@ -572,6 +573,7 @@ proc command_quit(arguments: string) =
         if tokens[0] == "!": quit(0)
     for i, document in open_documents:
         if not document.modified: continue
+        if document.lowest_index == 0 and document.highest_index == 0: continue
         if document.name == "":
             echo "> Document #", i, ", starting with the following line:\n"
             open_documents[i].body.list(0,open_documents[i].lowest_index+1)
@@ -639,8 +641,6 @@ proc evaluate(user_input: var string) =
         command_align(text)
     of 'q': # Exit the program
         command_quit(text)
-    #elif is_int(user_input): # delete line
-
     elif is_int(token):
         let index    : int = parseInt(token)
         let len_body : int = open_documents[current_document].len()
@@ -657,15 +657,8 @@ proc evaluate(user_input: var string) =
 #     M A I N     #
 #                 #
 ###################
-#write(stdout, "\x1b[2J")
 echo "\t\t*** Nim Unstructured Text Editor ***\n"
-
-
-#var new_document : Document = Document()
-#open_documents.add(new_document)
-#open_documents[current_document].length = 0
 command_new("")
-
 while true:
     var input : string = readLine(stdin)
     evaluate( input )
