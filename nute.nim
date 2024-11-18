@@ -16,6 +16,12 @@ import os, strutils, sequtils, math
 type
     # Direction used to select a child.
     Direction = enum Left, Right
+    Save_Errors = enum
+        SAVE_SUCCESS,
+        IS_SAVED,
+        NO_FILENAME,
+        CANT_WRITE
+
 
     # Description of the tree node.
     Line = ref object
@@ -304,7 +310,47 @@ proc strip_first_token(input: string, token: string): string =
 proc tokenize(input: string): seq[string] =
     return input.split(' ')[1 .. ^1]
 
+proc save_file(arguments: string, document: int): Save_Errors =
+    if open_documents[document].modified == false:
+        return IS_SAVED
+    var args: string = arguments
+    if arguments[0] != ' ': args = " " & args
+    var
+        tokens    : seq[string] = (args).tokenize()
+        file_path : tuple[dir: string, name: string, ext: string]
+        file      : tuple[file_path: string, text_body: string]
+    if tokens.len() == 0:
+        if
+            open_documents[document].name      == "" and
+            open_documents[document].path      == "" and
+            open_documents[document].extension == "":
+                return NO_FILENAME
+        else:
+            file = open_documents[document].save()
+    else:
+        file_path = splitFile(tokens[0])
+        open_documents[document].name      = file_path.name
+        open_documents[document].path      = file_path.dir
+        open_documents[document].extension = file_path.ext
+        file = open_documents[document].save()
 
+    try: writeFile( file.file_path, file.text_body )
+    except:
+        return CANT_WRITE
+    open_documents[document].modified = false
+    return SAVE_SUCCESS
+
+proc save_loop(document: int): void =
+    var should_break: bool = false
+    while true:
+        case save_file(readline(stdin), document)
+        of SAVE_SUCCESS: should_break = true
+        of IS_SAVED:     should_break = true
+        of NO_FILENAME:
+            echo "> Enter a valid path and name.\n"
+        of CANT_WRITE:
+            echo "> Enter a valid path and/or path you have write permissions for."
+        if should_break: break
 
 #---------------------------------------------------------------------------------------------------
 
@@ -419,36 +465,19 @@ proc command_open(arguments: string) =
 
 
 proc command_save(arguments: string) =
-    if open_documents[current_document].modified == false:
+    case save_file(arguments, current_document)
+    of SAVE_SUCCESS:
+        echo "> File ", open_documents[current_document].name & open_documents[current_document].extension, " saved successfully to directory ", open_documents[current_document].path, "!\n"
+    of IS_SAVED:
         echo "\tFile, ", open_documents[current_document].name & open_documents[current_document].extension, ", is already saved!\n"
-    var
-        tokens    : seq[string] = arguments.tokenize()
-        file_path : tuple[dir: string, name: string, ext: string]
-        file      : tuple[file_path: string, text_body: string]
-    if len(tokens) == 0:
-        if
-            open_documents[current_document].name      == "" and
-            open_documents[current_document].path      == "" and
-            open_documents[current_document].extension == "":
-                echo "\tSAVE Error: No filename or path given to save document!"
-                echo "\tCorrect Syntax: SAVE < path/to/filename.extension (optional)>"
-                return
-        else:
-            file = open_documents[current_document].save()
-    else:
-        file_path = splitFile(tokens[0])
-        open_documents[current_document].name      = file_path.name
-        open_documents[current_document].path      = file_path.dir
-        open_documents[current_document].extension = file_path.ext
-        file = open_documents[current_document].save()
-
-    try: writeFile( file.file_path, file.text_body )
-    except:
-        echo "\tSAVE Error: Unable to write file!\n\tMake sure you have given a valid path and/or file name."
+    of NO_FILENAME:
+        echo "\tSAVE Error: No filename or path given to save document!"
+        echo "\tCorrect Syntax: SAVE < path/to/filename.extension (optional)>"
+    of CANT_WRITE:
+        echo "\tSAVE Error: Unable to write file!\n"
+        echo "\tMake sure you have given a valid path and/or file name, or that you have write permissions for that directory."
         echo "\tCorrect Syntax: SAVE < path/to/filename.extension (optional)>\n"
-        return
 
-    echo "> File ", open_documents[current_document].name & open_documents[current_document].extension, " saved successfully to directory ", open_documents[current_document].path, "!\n"
 
 
 proc command_new(arguments: string) =
@@ -540,16 +569,39 @@ proc command_renum(arguments: string) =
 proc command_quit(arguments: string) =
     let tokens : seq[string] = arguments.tokenize()
     if 0 < len(tokens):
-        if tokens[0] == '!': quit(0)
-    for document in open_documents:
+        if tokens[0] == "!": quit(0)
+    for i, document in open_documents:
         if not document.modified: continue
-        echo "> Document ", document.name, ".", document.extension, " in ", document.path, "is unsaved; would you like to save it? [y/n/(c)ancel] "
+        if document.name == "":
+            echo "> Document #", i, ", starting with the following line:\n"
+            open_documents[i].body.list(0,open_documents[i].lowest_index+1)
+            echo "\n  is unsaved; would you like to save it? [(y)es/(n)o/(c)ancel]"
+        else:
+            echo "> Document ", document.name, ".", document.extension, " in ", document.path, "is unsaved; would you like to save it? [(y)es/(n)o/(c)ancel] "
+        var input: char = 'n'
         while true:
-            var input : string = readLine(stdin)
-            if   input.toLowerAscii() == "n": break
-            elif input.toLowerAscii() == "c": return
-            elif input.toLowerAscii() == "y": discard
-            echo "> Please enter either a 'y' or 'n'."
+            input = readLine(stdin).toLowerAscii()[0]
+            case input
+            of 'n': break
+            of 'y': break
+            of 'c': return
+            else:
+                echo "> Please enter either a 'y', 'n', or `c`."
+        if input == 'n': continue
+        if document.name == "":
+            echo "> Enter a valid path and name to save document number ", i, "."
+            save_loop(i)
+        else:
+            case save_file("",i)
+            of SAVE_SUCCESS: discard
+            of IS_SAVED:     discard
+            of NO_FILENAME:  discard
+            of CANT_WRITE:
+                echo "> Document cannot be saved to current path."
+                echo "> Enter a valid path and file path for which you have write permissions."
+                save_loop(i)
+
+    echo "Have a nice day!"
     quit(0)
         
 
@@ -586,9 +638,7 @@ proc evaluate(user_input: var string) =
     of 'a': # Align all line numbers in current file to a given increment
         command_align(text)
     of 'q': # Exit the program
-        echo "\tQUIT: todo->"
-        echo "\t\t- Ask user to save modified document(s) before exit"
-        quit(0)
+        command_quit(text)
     #elif is_int(user_input): # delete line
 
     elif is_int(token):
